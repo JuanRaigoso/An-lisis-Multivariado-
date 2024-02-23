@@ -1,0 +1,643 @@
+---
+title: |
+  <div style="text-align: center;"><strong>Análisis Multivariado</strong></div>
+subtitle: |
+  <div style="text-align: center;"><strong>Ejercicio N°1</strong></div>
+author: |
+  <div style="text-align: center;"><strong>Juan David Raigoso Espinosa</strong></div>
+date: |
+  <div style="text-align: center;"><strong>2024-01-29</strong></div>
+output:
+  html_document:
+    theme: united
+    toc: yes
+    toc_float:
+      collapsed: yes
+---
+::: text-justify
+
+# Problema
+
+Una empresa inmobiliaria líder en una gran ciudad está buscando comprender en profundidad el mercado de viviendas urbanas para tomar decisiones estratégicas más informadas. La empresa posee una base de datos extensa que contiene información detallada sobre diversas propiedades residenciales disponibles en el mercado. Se requiere realizar un análisis holístico de estos datos para identificar patrones, relaciones y segmentaciones relevantes que permitan mejorar la toma de decisiones en cuanto a la compra, venta y valoración de propiedades.
+
+# Análisis exploratorio.
+
+```{r, message=FALSE}
+suppressWarnings({suppressMessages(library(paqueteMODELOS))
+suppressMessages(library(mice))
+suppressMessages(library(tidyverse))
+suppressMessages(library(naniar))
+suppressMessages(library(pacman))
+suppressMessages(library(DataExplorer))
+suppressMessages(library(ggcorrplot))
+suppressMessages(library(Cairo))
+suppressMessages(library(factoextra))
+suppressMessages(library(ggrepel))
+suppressMessages(library(textshape))
+suppressMessages(library(cluster))
+suppressMessages(library(NbClust))
+suppressMessages(library(FactoMineR))
+suppressMessages(library(pander))
+suppressMessages(library(sf))
+suppressMessages(library(corrplot))
+suppressMessages(library(gridExtra))
+})
+```
+
+Cargue y lectura de la base de datos
+```{r,echo=FALSE}
+print(vivienda)
+```
+
+Estructura del data frame.
+
+```{r,echo=FALSE}
+str(vivienda)
+``` 
+Se observa que la base de datos tiene 8322 registros y 13 variables dentro de las cuales cuenta con 3 variables cualitativas y 10 cuantitativas, 4 variables tipo texto y 8 variables tipo númericas. dentro de las variables tipo texto se encuentra *piso*, sin embargo, se realiza la transformación a tipo númerico.
+
+```{r,echo=FALSE}
+vivienda$piso<-as.numeric(vivienda$piso)
+str(vivienda)
+```
+
+Se procede a realizar la verificación de la existencia de datos faltantes.
+
+De acuerdo a esto, se observa en el siguiente gráfico la existencia de valores faltantes en el dataset, siendo las variables piso y parqueaderos las que mayor cantidad de datos faltantes presentan. 
+
+```{r, echo=FALSE}
+md.pattern(vivienda, rotate.names = TRUE)
+title(main = "Matriz de Datos faltantes", sub = "Valores faltantes en el conjunto de datos")
+```
+
+A continuación, vemos de forma más detallada la distribución de los valores faltantes en el dataset.
+
+```{r,echo=FALSE}
+gg_miss_var(vivienda) + labs(x="Variables", y = "Datos NA")
+```
+
+Se presenta a continuación la suma de los valores faltantes por cada atributo de la data. Donde, piso cuenta con un toal de 2638 datos faltantes y parqueaderos con un total de 1605 de datos faltantes.
+
+```{r, echo=FALSE}
+colSums(is.na(vivienda))
+```
+
+Se opta por remover estás columnas (parqueaderos y piso) con valores faltantes en el conjunto de datos, ya que la imputación utilizando medidas de tendencia central podría distorsionar incorrectamente el análisis del problema. Además, la columna parqueadderos tiene un total de 19.29% de NA y la columna piso de 31.70%.
+
+```{r, echo=FALSE}
+vivienda_1 <- subset(vivienda, select = c('id', 'zona', 'estrato', 'preciom', 'areaconst', 'habitaciones', 'banios', 'tipo', 'barrio', 'longitud', 'latitud'))
+vivienda_1 <- vivienda_1[complete.cases(vivienda_1$id), ]
+vivienda_1<-textshape::column_to_rownames(vivienda_1, loc = 1)
+```
+
+```{r, echo=FALSE}
+md.pattern(vivienda_1, rotate.names = TRUE)
+```
+```{r, echo=FALSE}
+str(vivienda_1)
+```
+
+Distribución de los datos según variable.
+
+```{r, echo=FALSE}
+variables_a_incluir <- setdiff(names(vivienda_1), c("latitud", "longitud"))
+
+# Crea el gráfico de histogramas solo para las variables seleccionadas
+plot_histogram(vivienda_1[, variables_a_incluir])
+```
+
+De los gráficos de histograma se deduce que los precios de las propiedades disponibles se concentran en precios menores a 500 millones de pesos. También, gran parte de las propiedades tienen en 2 a 4 baños.
+
+Por otro lado, en promedio el área construida de las propiedades es de 174 metros cuadrados y cuentan con 2 o 3 habitaciones. Asimismo, la mayoría de las propiedades se centran en estratos 4,5 y 6.
+
+```{r, echo=FALSE}
+correlacion <- select(vivienda_1, Estrato=estrato, Precio=preciom,'Área construida'=areaconst, ' baños'=banios, 'habitaciones'=habitaciones)
+correl <- cor(correlacion)
+ggcorrplot(correl, type = "upper", lab = TRUE)+
+  labs(title = "Matriz de Correlación")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+En general, se puede concluir que las variables Área construida y Precio están medianamente fuerte correlacionadas. Esto significa que las propiedades con una mayor área construida tienden a tener un precio más alto. Las variables habitaciones y Área construida también están correlacionadas, pero menos fuertemente que Área construida y Precio. Esto significa que las propiedades ubicadas en pisos más altos o en estratos más altos tienden a tener un precio más alto.
+
+En particular, se puede concluir que:
+
+• Área construida y Precio tienen una correlación positiva de 0,7. Esto significa que las dos variables están directamente relacionadas.
+
+• Precio y Estrato tienen una correlación positiva de 0,61. Esto significa que las dos variables también están directamente relacionadas, pero en menor medida que Área construida y Precio.
+
+• Baños y Área construida tienen una correlación positiva (0.65), entre mayor sea el área construida mayor cantidad de baños hay. También las variables precio y baños presentan una correlación positiva (0.67).
+
+```{r, echo=FALSE}
+
+# Definir una paleta de colores pasteles
+colores_pasteles <- c("#FFB6C1", "#FFD700", "#98FB98", "#87CEEB", "#FFA07A", "#B0E0E6")
+
+# Lista para almacenar gráficos
+plots <- list()
+
+for (i in seq_along(colnames(correlacion))) {
+  p <- ggplot(correlacion, aes(x = 1, y = .data[[colnames(correlacion)[i]]])) +
+    geom_boxplot(fill = colores_pasteles[i], color = "black") +
+    labs(title = paste("Boxplot de", colnames(correlacion)[i]), x = "", y = colnames(correlacion)[i]) +
+    theme_minimal() +
+    theme(axis.text.x = element_blank(), axis.title.x = element_blank())
+  
+  plots[[i]] <- p
+}
+
+# Organizar los gráficos en una cuadrícula de 2x2 con más espacio entre las filas
+grid.arrange(grobs = plots, ncol = 2, heights = c(2, 2, 2, 2))
+```
+
+En particular, se puede inferir que:
+
+•	Habitaciones y Área construida tienen una distribución muy dispersa, lo que indica que hay una gran variabilidad en el número de habitaciones de las propiedades y sus tamaños.
+
+•	Baños también tiene una distribución dispersa, pero en menor medida que Habitaciones.
+
+•	Estrato tienen una distribución más concentrada, lo que indica que hay menos variabilidad en el piso y el estrato de las propiedades.
+
+Teniendo en cuenta la estructura de la base de datos, la limpieza realizada y el análisis exploratorio que se realizó, pasamos a realizar el Análisis de Componentes Principales (ACP).
+
+# Análisis de Componentes Principales (ACP)
+
+Retengamos en la memoria que el procedimiento de componentes principales (PCA) se emplea principalmente para examinar variables numéricas y disminuir la complejidad dimensional de los datos. Dado que la base de datos actual incluye variables cualitativas, es necesario eliminar las columnas que contienen este tipo de datos, y para ello, se aplican las siguientes instrucciones:
+```{r, echo=FALSE}
+columnas_chr <- sapply(vivienda_1, is.character)
+vivienda_cuantitativas <- vivienda_1[, !columnas_chr]
+head(vivienda_cuantitativas)
+```
+
+Con el fin de evitar que las variables que tiene una escala con valores más grandes afecten las estimaciones realizadas (sesgos) se realiza la estandarización de las variables antes de proceder a realizar el proceso de estimación de los componentes principales.
+
+```{r, echo=FALSE}
+vivienda_1escala <- vivienda_cuantitativas %>%
+  select(estrato, preciom, areaconst, habitaciones, banios) %>%
+  scale()
+head(vivienda_1escala)
+```
+
+## Desviación estandar
+
+```{r, echo=FALSE}
+res.pca <- prcomp(vivienda_1escala)
+res.pca
+summary(res.pca)
+```
+
+```{r}
+get_eigenvalue(res.pca)
+```
+
+
+## Elección del número de componentes principales.
+
+```{r ,echo=FALSE}
+res.pca<-prcomp(vivienda_1escala)
+fviz_eig(res.pca, addlabels = TRUE)
+```
+
+En este caso el primer componente principal explica el 58.7% de la variabilidad contenida en la base de datos y entre los dos primeros más del 82% de los datos (82.5), lo cual indicaría que con sólo una variable (CP1) que se obtiene mediante una combinación lineal de las variables se puede resumir gran parte de la variabilidad que contiene la base de datos.
+
+
+A continuación, se representan las variables sobre los componentes principales, donde, área construida, baños y precio se situan sobre el componente 1 y habitaciones y estrato sobre el 2.
+```{r, echo=FALSE}
+fviz_pca_var(res.pca,repel = T, colvar="cos2", col.var = "contrib", alpha.var = "contrib", gradient.cols=c("#FF7F00",  "#034D94"))
+```
+
+Se visualiza que las características área construida, baños y precio están bien representadas sobre la dimensión 1. Estas características están relacionadas con las dimensiones físicas, comodidades y valor de la propiedad. Mientras que habitaciones y Estrato están representan en la Dimensión 2.
+
+A continuación, se visualiza la correlación de las dimensiones con los atributos, donde se evidencia que la Dim 1, engloba los atributos Precio, Area Construida y Baños. La Dim 2, el resto de los atributos.
+
+```{r, echo=FALSE}
+corrplot(get_pca_var(res.pca)$cos2)
+```
+
+```{r, echo=FALSE}
+fviz_pca_ind(res.pca)
+```
+
+En el gráfico vemos como se distribuyen las porpiedades ofertadas sobre o dentro del PCA.
+
+Por otro lado, podemos observar el comportamiento de los datos según las variables Habitaciones, Área construida, Baños, Precio y Estrato.
+
+
+```{r ,echo=FALSE}
+color_variables <- "#1F618D"  # Puedes ajustar este color según tus preferencias
+color_individuos <- "#95a5a6"
+
+# Gráfico mejorado
+fviz_pca_biplot(res.pca, repel = FALSE,
+                col.var = color_variables,
+                col.ind = color_individuos,
+                geom.var = c("point", "text"), # Puntos y etiquetas para las variables
+                geom.ind = c("point", "text"), # Puntos y etiquetas para los individuos
+                legend.title = "Variables",   # Título de la leyenda
+                ggtheme = theme_minimal(),     # Tema minimalista
+) +
+  theme(legend.position = "right",    # Posición de la leyenda
+        legend.direction = "vertical", # Dirección de la leyenda
+        legend.background = element_rect(fill = "white", color = "transparent"), # Fondo de la leyenda
+        panel.grid.major = element_blank(),  # Eliminar líneas de la cuadrícula
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),        # Eliminar marcas de los ejes
+        panel.border = element_blank(),      # Eliminar bordes del panel
+        plot.title = element_text(hjust = 0.5), # Alineación del título
+        text = element_text(size = 14, color = "black", face = "bold"), # Tamaño y estilo de texto
+        axis.text = element_text(size = 12, color = "black", face = "bold") # Tamaño y estilo de texto de los ejes
+  ) +
+  theme(text = element_text(face = "bold"))  # Hacer que todo el texto sea en negrita
+
+
+```
+
+Una vez calculadas las componentes principales, se puede conocer la varianza explicada por cada una de ellas, la proporción respecto al total y la proporción de varianza acumulada.
+
+## proporción de varianza acumulada:
+
+```{r, echo=FALSE}
+prop_varianza <- res.pca$sdev^2 / sum(res.pca$sdev^2)
+prop_varianza
+```
+
+```{r, echo=FALSE}
+df <- data.frame(prop_varianza, pc = 1:length(prop_varianza))
+
+# Graficar
+ggplot(data = df,
+       aes(x = pc, y = prop_varianza)) +
+  geom_col(width = 0.3) +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_bw() +
+  labs(x = "Componente principal",
+       y = "Prop. de varianza explicada")
+```
+
+## Varianza acomulada:
+
+```{r,echo=FALSE}
+prop_varianza_acum <- cumsum(prop_varianza)
+prop_varianza_acum
+```
+
+```{r,echo=FALSE}
+ggplot(data = df,
+       aes(x = pc, y = prop_varianza_acum, group = 1)) +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  labs(x = "Componente principal",
+       y = "Prop. varianza explicada acumulada")
+```
+
+En este caso, la primera componente explica el 58% de la varianza observada en los datos y la segunda el 23%. Las 3 últimas componentes no superan por separado el 1% de varianza explicada. Si se empleasen únicamente las dos primeras componentes se conseguiría explicar el 82% de la varianza observada.
+
+## Conlusiones:
+
+  - La primera componente explica el 58.66 % de la varianza observada de los datos y la segunda componente el 23.76% de la varianza observada, por tanto, en conjunto ambas componentes logran explicar el 82.42% de esta varianza. Es decir, en ambas componentes contienen la mayor parte de la información contenida en las 5 variables.
+  
+  - En la primera componente, se observa que las variables, a saber, el número de baños, el precio de la vivienda y el área construida, exhiben una influencia significativa en orden de importancia. En la segunda componente, las variables estrato y habitaciones son las que presentan una influencia más destacada en sus respectivas posiciones. El análisis de la matriz de correlaciones inicial revela una fuerte correlación entre las variables de mayor influencia en la primera componente, indicando una posible dependencia entre ellas.
+  
+  - En caso de optar por un modelo de regresión simple, se pueden emplear las dos componentes obtenidas mediante el ACP. Por otro lado, si se busca desarrollar un modelo de regresión múltiple, se pueden utilizar las cinco variables originales. Posteriormente, se recomienda comparar el ajuste y las predicciones de ambos modelos para evaluar su desempeño relativo.
+  
+  
+# Análisis de Conglomerados.
+
+Se seleccionan las variables Estrato, precio, área construida, baños y habitaciones.
+
+Dado que los rangos de las variables son diferente y con fin de que estas diferencias en las dimensiones de las variables no afecte los cálculos de las distancias se aconseja estandarizar las variables (restar la media y dividir el resultado por la desviación estándar) antes de generar las cálculos de las distancias.
+
+```{r,echo=FALSE}
+head(vivienda_1escala)
+```
+
+## Determinar el número de clusters.
+
+ -  Método del codo.
+ 
+```{r, echo=FALSE}
+fviz_nbclust(vivienda_1escala, kmeans, method = "wss")
+```
+
+EL método codo muestra que posiblemente el número óptimo de clústeres adecuado es 4. Esto se puede ver en el hecho de que la gráfica muestra un cambio brusco en la pendiente de la línea de la curva del codo en el punto 4.
+
+ - Método de la silueta.
+ 
+EL método de la silueta muestra que posiblemente el número óptimo de clústeres adecuado es 2. Ya que, el mismo método nos señala en el número de clúster K el número 2, a su vez en este clúster se visualiza el cambio abrupto que presenta la línea.
+```{r,echo=FALSE}
+fviz_nbclust(vivienda_1escala, kmeans, method = "silhouette")
+```
+
+
+Al observar que no es claro el número de clusters óptimos, utilizamos el método de enlace completo (complete linkage), también conocido como el método de enlace máximo. Este método es una estrategia utilizada en la técnica de agrupamiento jerárquico aglomerativo.
+
+
+```{r,echo=FALSE}
+res.nbclust <- NbClust(vivienda_1escala, distance = "euclidean", min.nc = 2, max.nc=10, method = "complete", index = "all")
+```
+
+Los resultados de la implementación del método son los siguientes:
+
+
+Entre todos los índices:
+
+  - 7 propusieron 2 como el mejor número de clústeres.
+    
+  - 13 propusieron 3 como el mejor número de clústeres.
+    
+  - 2 propusieron 6 como el mejor número de clústeres.
+    
+  - 2 propusieron 10 como el mejor número de clústeres.
+    
+**Conclusión**
+
+De acuerdo con la regla de la mayoría (mayoría de los índices), se concluye que el mejor número de clústeres es 3.
+
+De acuerdo a esta información, se gráfica los clúster.
+
+```{r,echo=FALSE}
+set.seed(123)
+k2 <- kmeans(vivienda_1escala, centers = 3, nstart = 25)
+fviz_cluster(k2, data = vivienda_1escala)
+
+```
+
+Donde cada clústers quedo con la siguiente distribución:
+
+```{r,echo=FALSE}
+set.seed(123)
+asignacion_clusters <- k2$cluster
+# Contar el número de observaciones en cada clúster
+conteo_por_cluster <- table(asignacion_clusters)
+# Mostrar el resultado
+print(conteo_por_cluster)
+```
+
+## Vizualizaciones según variable por clúster.
+
+A continuación, se realiza el diagrama de dispersión que representa la relación entre el precio y el área construida de propiedades inmuebles, agrupadas por clústeres. El eje horizontal representa el área construida en metros cuadrados, mientras que el eje vertical representa el precio en miles de pesos colombianos.
+
+Clúster 1: Presenta propiedades con áreas construidas medianamente grandes y a su vez con precios no muy altos.
+
+Clúster 2: Presenta propiedades con áreas construidas muy pequeñas y precios bajos.
+
+Clúster 3: Presentan Propiedades con grandes cantidades de área construida y con precios muy altos.
+
+```{r,echo=FALSE}
+vivienda_copia <- data.frame(vivienda_1)
+vivienda_copia$clus<-as.factor(k2$cluster)
+ggplot(data = vivienda_copia) +
+  geom_point(mapping = aes(x =preciom, y =areaconst,  color= factor(clus)))+
+  labs(title = "Relación Precio - Área Construida según Clúster", x = "Precio", y = "Area Construida")+
+  scale_color_discrete(name = "Clústers")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+El clúster 1 se haya presente en todas las zonas (Centro, Norte, Oeste, Oriente, Sur), pero se visualiza que en las zonas Sur y Norte hay bastantes propiedades con precios muy altos. Sin embargo, los precios en promedio son bajos.
+
+Dentro de la relación que hay en entre el precio por zona, se observar que el clúster 2 está presente en las zonas Norte, Oeste y Sur, en estas zonas como se había mencionado se encuentran las propiedades más costosas, y existe presencia de valores atípicos en relación con el precio en estas zonas según lo observado.
+
+Por último, para el clúster 3 los precios más bajos para este grupo se encuentran en la zona Oriente, para las zonas Centro, Norte y Oriente los precios son relativamente homogéneos; y para la zona Oeste se encuentran los precios más altos para el clúster 3.
+
+```{r,echo=FALSE}
+ggplot(vivienda_copia,mapping=aes(x=zona, y=preciom, fill=clus)) +
+  geom_boxplot()+
+  labs(title = "Relación Caja de bigotes por precio- Zona según Clúster",
+       x = "Zona",
+       y = "Precio",
+       fill="clúster")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r,echo=FALSE}
+# Leer el shapefile con datos geoespaciales desde un archivo
+datos_shapefile <- st_read("C:/Users/juanr/Downloads/mazanascali.shp")
+vivienda_copia_mapa <- read.csv("~/vivienda_copia_mapa.csv")
+# Convertir los datos de vivienda a un objeto sf con coordenadas especificadas y realizar buffer
+vivienda_sf <- st_as_sf(vivienda_copia_mapa, coords = c("longitud", "latitud"), crs = st_crs(datos_shapefile))
+datos_shapefile <- st_as_sf(datos_shapefile)
+vivienda_sf <- st_buffer(vivienda_sf, dist = 0.01)
+# Realizar una operación de unión espacial entre los datos del shapefile y los datos de vivienda
+datos_combinados <- st_join(datos_shapefile, vivienda_sf)
+# Reemplazar los valores NA en clus con un valor temporal (puedes ajustar esto según tus necesidades)
+datos_combinados$clus_temp <- ifelse(is.na(datos_combinados$clus), "NA", as.factor(datos_combinados$clus))
+# Crear el gráfico
+ggplot() +
+  geom_sf(data = datos_combinados, aes(fill = clus_temp), color = "#8f8f8f", size = 0.2) +
+  scale_fill_manual(values = c("#0B7072", "#EFE081", "#F1713F", "#8f8f8f"), name = "clústeres") +
+  ggtitle("Distribución de clústeres en Santiago de Cali") +
+  theme_minimal() +
+  labs(fill = "clústeres") +
+  guides(fill = guide_legend(na.value = "transparent")) +
+  theme(legend.key = element_rect(color = "grey"))
+```
+
+Por último, se realiza un mapa de la ciudad de Santiago de Cali, Colombia, donde se plasma como se distribuyen los clústeres en la ciudad. Recordemos las características de cada uno de los clústeres. 
+
+Clúster 1:
+
+  -	Esta presente en todas las zonas (Norte, Sur, Centro, Oeste y Oriente).
+
+  -	Los precios en promedio del clúster son de 263 millones de pesos. Y el 50% de las propiedades tiene un precio igual o menor a 250 millones de pesos.
+
+  -	En promedio el número de habitaciones es de 3.
+
+  -	Las propiedades cuentan con 2 baños, esto entre los 50% de las propiedades.
+
+  -	El 75% de las viviendas tienen un estrato igual o menos al 5.
+
+  -	El 77.3% de las propiedades corresponden a Apartamentos y el 22.7% a Casas.
+
+Clúster 2:
+
+  -	Está presente solo en las zonas Norte, Oeste y Sur.
+  
+  -	Los precios en promedio del clúster son de 866 millones de pesos. Y el 50% de las propiedades tiene un precio igual o menor a 760 millones de pesos.
+  
+  -	En promedio el número de habitaciones es de 4.
+
+  -	Las propiedades cuentan con 4 baños, esto entre los 50% de las propiedades.
+
+  -	El 75% de las viviendas tienen un estrato igual o menos al 6.
+
+  -	El 49.7% de las propiedades corresponden a Apartamentos y el 50.3% a Casas.
+
+Clúster 3:
+
+  -	Está presente en todas las zonas (Norte, Sur, Centro, Oeste y Oriente).
+  
+  -	Los precios en promedio del clúster son de 464 millones de pesos. Y el 50% de las propiedades tiene un precio igual o menor a 420 millones de pesos.
+  
+  -	En promedio el número de habitaciones es de 6.
+  
+  -	Las propiedades cuentan con 4 baños, esto entre los 50% de las propiedades.
+  
+  -	El 75% de las viviendas tienen un estrato igual o menos al 5.
+  
+  -	El 2.88% de las propiedades corresponden a Apartamentos y el 97.1% a Casas.
+
+
+# Análisis de Correspondencia.
+
+Examinar la relación entre las variables categóricas (tipo de vivienda, zona y barrio), para identificar patrones de comportamiento de la oferta en mercado inmobiliario.
+
+
+```{r,echo=FALSE}
+vivienda_categ <- vivienda_1[, c("tipo", "zona", "barrio")]
+head(vivienda_categ)
+```
+
+Se revisa si la base tiene datos faltantes (rectángulos de color rojo)
+
+```{r,echo=FALSE}
+md.pattern(vivienda_categ)
+```
+
+Observamos la frecuencia de los datos para las variables **zona** y **tipo**.
+
+```{r,echo=FALSE}
+F1<-ggplot(vivienda_1, aes(x=zona)) + geom_bar(fill= "#DDB4EB")
+F2<-ggplot(vivienda_1, aes(x=tipo)) + geom_bar(fill= "#FFD4A5")
+F3 <- grid.arrange(F1,F2)
+```
+
+Se ve que hay una gran concentración de propiedades en la zona sur y también, aunque en menos cantidad en la zona norte. Por otro lado, hay mayor cantidad de apartamentos que de casas.
+
+
+```{r,echo=FALSE}
+tabla2 <- table(vivienda_categ$tipo,vivienda_categ$zona)
+colnames(tabla2) <- c("Zona Centro", "Zona Norte", "Zona Oeste", "Zona Oriente", "ZonaSur")
+rownames(tabla2) <- c("Apartamento", "Casa")
+addmargins(tabla2)
+```
+
+Antes de realizar el Análisis de Correspondencia se aplica  el test de chi-cuadrado de Pearson como paso previo cuando se tienen dos variables categóricas y se desea explorar la relación entre ellas.
+
+En este caso se realiza el test de chi-cuadrado para las variables "Zona" y "Tipo" (Apartamento y Casa), lo cual es apropiado antes de realizar un análisis de correspondencia para determinar si existe una asociación significativa entre estas dos variables categóricas.
+
+
+```{r,echo=FALSE}
+chisq.test(tabla2)
+```
+
+El resultado del test muestra un valor de chi-cuadrado de 690.93 con 4 grados de libertad y un valor p muy pequeño (< 2.2e-16), lo que indica que hay una relación significativa entre las variables "Zona" y "Tipo". Esto sugiere que estas variables no son independientes entre sí y que hay una asociación entre las zonas y el tipo de vivienda (apartamento o casa).
+
+Por lo tanto, es adecuado proceder con el análisis de correspondencia para explorar más a fondo la relación entre estas variables y visualizar patrones en los datos.
+
+
+
+![](00001.png)
+
+```{r, include=FALSE}
+vivienda_categ_2 <- vivienda_1[, c("tipo", "zona")]
+mca_result_1 <- MCA(vivienda_categ_2)
+```
+
+```{r, echo=FALSE }
+fviz_screeplot(mca_result_1, addlabels = TRUE) 
+```
+
+Los resultados indican que el primer componente contiene el 25.8% de la varianza de los datos y el segundo componente el 20.0%, es decir que entre ambos se aporta el 45.8.% de los datos categoricos.
+
+
+A continuación, se realiza el análisis de componentes principales para las 3 variables categóricas: Zona, Barrio y tipo.
+
+```{r,echo=FALSE}
+mca_result <- MCA(vivienda_categ)
+```
+
+
+En el gráfico, se nota la proximidad entre las variables "zona" y "barrio", lo cual sugiere una similitud en sus perfiles de categorías. En contraste, la variable "tipo" está más alejada, indicando diferencias significativas en sus perfiles de categorías.
+
+Interpretación de Variables Cercanas: La proximidad entre las variables "zona" y "barrio" en el gráfico sugiere que comparten categorías que están relacionadas en el conjunto de datos. Eso se debe a que hay ciertos tipos de barrios que solo están en una zona específica.
+
+## Eigenvalues / Varianzas.
+
+```{r, echo=FALSE}
+eigenval <- get_eigenvalue(mca_result)
+pander(head(eigenval))
+```
+
+## Coordenadas puntuales.
+
+Si queremos ver las coordenadas puntuales de cada categoría en cada dimensión:
+
+```{r, echo=FALSE}
+var <- get_mca_var(mca_result)
+pander(head(round(var$coord, 2), 15))
+```
+
+
+
+```{r, echo=FALSE}
+fviz_screeplot(mca_result, addlabels = TRUE) 
+```
+
+## PCA graph of individuals.
+
+```{r,echo=FALSE}
+fviz_mca_ind(mca_result,
+            label = "none",
+            habillage = "tipo",
+            pallette = c("#CCCCFF", "#F08080"),
+            addEllipses = TRUE,
+            ggtheme = theme_grey())
+```
+
+Se puede observar cómo las elipses de concentración de los puntos correspondientes a las categorías de la variable tipo están diferenciadas entre sí horizontalmente, indicando que ambas dimensiones discriminan entre estas dos categorías de la variable.
+
+```{r}
+fviz_ellipses(mca_result,1:2 ,
+              geom = "point")
+```
+Al realizar entre ambas variables categóricas, en este caso son Tipo y Zona, deducimos que la zonas centro y Oeste pertenecen a la dimensión 1 y las zonas Norte y Sur en la dimensión 2.
+
+A continuación, se detalla un poco más la distribución individual de la variable **Zona**, donde se confirma lo anteriormente mencionado. En resumen, la dimensión 1 esta compuesta por zona Centro, Oeste y Oriente; y la dimensión 2 está compuesta por Zona Norte y Sur.
+
+```{r}
+fviz_mca_ind(mca_result,
+            label = "none",
+            habillage = "zona",
+            pallette = c("#CCCCFF", "#F08080"),
+            addEllipses = TRUE,
+            ggtheme = theme_grey())
+```
+
+# Conclusiones generales.
+
+En este trabajo se aplican 3 algoritmos el Análisis de Componentes Principales (PCA), el Análisis de Conglomerados y en Análisis de correspondencia, con el fin identificar patrones, relaciones y segmentaciones relevantes que permitan mejorar la toma de decisiones en cuanto a la compra, venta y valoración de propiedades.
+
+En relación con el **Análisis de Componentes Principales (PCA)** se encontró que:
+
+  -	La dimensión 1 explica el 58.7% de la variabilidad en los datos, destacando la influencia significativa de variables como área construida, baños y precio en la estructura de las propiedades.
+
+  -	La dimensión 2, con el 23.8% de explicación, resalta la relación clave entre habitaciones y estrato.
+
+  -	En la dimensión 1 las propiedades tienden a diferenciarse principalmente por su tamaño (área construida) y comodidades (baños y precio).
+
+  -	En la dimensión 2 la estratificación y el número de habitaciones juegan un papel destacado en la diferenciación de las propiedades.
+
+En relación con el **Análisis  de conglomerados o clustering** se encontró que:
+
+  -	Los clústeres 2 y 3 es donde se ubican menos propiedades entre los dos dan una suma de 3049 propiedades, en cambio en el clúster 1 hay un total de 5270 propiedades.
+
+  -	En el clúster 1 los precios son significativamente menores que en los otros dos clústeres.
+
+  -	Las propiedades con estratos más altos se encuentran se encuentran en los clústeres 2 y 3, a su vez en estos es donde se encuentran los precios más altos para las viviendas (866 millones y 464 millones en promedio, respectivamente).
+
+  -	Con relación a las características físicas o estructurales de las propiedades en los clústeres 2 y 3 el 50% de las propiedades cuentan con al menos 4 baños, en cambio en el clúster 1 el 50% de las propiedades cuentan con 2 baños.
+
+  -	En la misma línea, en relación con la cantidad de habitaciones hay diferencia entre los 3 clúster, donde el clúster 1 la media es de 3 habitaciones; en el clúster 2 la media es de 4 habitaciones; y en el clúster 3 la media es de 6 habitaciones.
+
+-	El área construida en el 50% de las propiedades son de: el cluster 1 de 90 m2; clúster 2 de 250 m2; clúster 3 de 280 m2.
+
+En relación con el **Análisis de Correspondencia** se encontró que:
+
+-	Existe una relación entre las variables "zona" y "barrio", lo que indica una similitud en sus patrones de categorías. Por otro lado, la variable "tipo" se encuentra más distante, señalando diferencias significativas en sus perfiles de categorías.
+
+-	Se observaron agrupamientos claros de propiedades en la gráfica “PCA graph of individuals”, lo que sugiere la existencia de segmentos distintos en el mercado inmobiliario, como propiedades de lujo, propiedades urbanas, etc.
+
+
+:::
